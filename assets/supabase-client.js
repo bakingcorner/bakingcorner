@@ -1,5 +1,5 @@
-const SUPABASE_URL = 'https://ijaxvvpatxyxpadvgbup.supabase.co';
-const SUPABASE_ANON_KEY = 'sb_publishable_VCPFUWqegL5xSS3VsYO76A_VXtvJGwR';
+const SUPABASE_URL = 'https://lvgeiviktjjycxshdrnw.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_jwYinUXjJgecitVI_ISOdg_dkaW8Y-M';
 
 // Initialize Supabase Client correctly using the global SDK object
 const supabaseInstance = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
