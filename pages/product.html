@@ -1187,6 +1187,27 @@
 
             // Similar products
             buildSimilar(product);
+
+            // Initial price update
+            updateDisplayPrice();
+        }
+
+        // ── Update Display Price (Unit * Qty) ──
+        function updateDisplayPrice() {
+            if (!currentProduct) return;
+            const qty = parseInt(document.getElementById('qtyInput').value) || 1;
+
+            // If unit price isn't explicitly set via pound choice, use base product price
+            let unitPrice = (currentPoundPrice !== null) ? currentPoundPrice : currentProduct.price;
+
+            const total = unitPrice * qty;
+
+            const s = JSON.parse(localStorage.getItem('siteSettings') || '{}');
+            const sym = s.currencySymbol || '৳';
+            const pos = s.currencyPosition || 'before';
+            const fmt = n => pos === 'after' ? n.toLocaleString('en-IN') + '.00' + sym : sym + n.toLocaleString('en-IN') + '.00';
+
+            document.getElementById('pdPrice').textContent = fmt(total);
         }
 
         function capitalize(str) {
@@ -1252,25 +1273,24 @@
                     wrap.style.display = 'block';
                     inp.value = '';
                     inp.focus();
-                    selectedWeight = 'Custom'; // will be overwritten as user types
+                    selectedWeight = 'Custom';
                 } else {
                     wrap.style.display = 'none';
                     inp.value = '';
                 }
-                // Auto-update price display
+
                 if (!currentProduct) return;
-                const s = JSON.parse(localStorage.getItem('siteSettings') || '{}');
-                const sym = s.currencySymbol || '৳';
-                const pos = s.currencyPosition || 'before';
-                const fmt = n => pos === 'after' ? n + sym : sym + n;
+
                 if (btn.dataset.price && btn.dataset.price !== 'null' && btn.dataset.val !== 'Custom') {
                     currentPoundPrice = parseFloat(btn.dataset.price);
-                    document.getElementById('pdPrice').textContent = fmt(currentPoundPrice.toLocaleString('en-IN') + '.00');
+                } else if (btn.dataset.val !== 'Custom') {
+                    // Auto-calculate unit price based on pounds if no specific price set
+                    const poundVal = parseFloat(btn.dataset.val);
+                    currentPoundPrice = !isNaN(poundVal) ? (currentProduct.price * poundVal) : currentProduct.price;
                 } else {
-                    // Custom or no price set — revert to product base price
                     currentPoundPrice = null;
-                    document.getElementById('pdPrice').textContent = fmt(currentProduct.price.toLocaleString('en-IN') + '.00');
                 }
+                updateDisplayPrice();
             }
         }
 
@@ -1350,31 +1370,27 @@
             }
 
             // Update state and UI
-            const s = JSON.parse(localStorage.getItem('siteSettings') || '{}');
-            const sym = s.currencySymbol || '৳';
-            const pos = s.currencyPosition || 'before';
-            const fmt = n => pos === 'after' ? n + sym : sym + n;
-
             if (calculatedPrice !== null) {
                 currentPoundPrice = calculatedPrice;
-                const formatted = fmt(calculatedPrice.toLocaleString('en-IN') + '.00');
-                // Update main price
-                pdPriceEl.textContent = formatted;
-                // Show inline price display
-                priceSpan.textContent = formatted;
+                // Show inline price display for custom
+                const s = JSON.parse(localStorage.getItem('siteSettings') || '{}');
+                const sym = s.currencySymbol || '৳';
+                const pos = s.currencyPosition || 'before';
+                const fmt = n => pos === 'after' ? n + sym : sym + n;
+                priceSpan.textContent = fmt(calculatedPrice.toLocaleString('en-IN') + '.00');
                 display.style.display = 'flex';
             } else {
-                // Fallback reached but failed? Revert
                 currentPoundPrice = null;
-                if (currentProduct) pdPriceEl.textContent = fmt(currentProduct.price.toLocaleString('en-IN') + '.00');
                 display.style.display = 'none';
             }
+            updateDisplayPrice();
         }
 
         function changeQtyLocal(d) {
             const inp = document.getElementById('qtyInput');
             const val = Math.max(1, parseInt(inp.value || 1) + d);
             inp.value = val;
+            updateDisplayPrice();
         }
 
         // ── Cart ──
@@ -1431,6 +1447,7 @@
         // ── Build Flavour Chips ──
         function buildFlavourChips() {
             const container = document.getElementById('flavourChips');
+            const group = container.closest('.pd-option-group');
             let options = (currentProduct && currentProduct.flavour_options && currentProduct.flavour_options.length)
                 ? currentProduct.flavour_options
                 : [];
@@ -1439,8 +1456,13 @@
                 try { options = JSON.parse(localStorage.getItem('flavourOptions') || '[]'); } catch (e) { }
             }
 
-            const defaults = ['Vanilla', 'Chocolate', 'Strawberry', 'Rasmalai'];
-            const names = options.length ? options.map(f => f.name) : defaults;
+            if (!options.length) {
+                group.style.display = 'none';
+                return;
+            }
+
+            group.style.display = 'block';
+            const names = options.map(f => f.name);
 
             container.innerHTML = names.map((name, i) => {
                 if (i === 0) selectedFlavour = name;
@@ -1451,6 +1473,7 @@
         // ── Build Pound Weight Chips ──
         function buildWeightChips() {
             const container = document.getElementById('weightChips');
+            const group = container.closest('.pd-option-group');
             let options = (currentProduct && currentProduct.pound_options && currentProduct.pound_options.length)
                 ? currentProduct.pound_options
                 : [];
@@ -1460,38 +1483,37 @@
                 try { options = JSON.parse(raw || '[]'); } catch (e) { }
             }
 
+            if (!options.length) {
+                group.style.display = 'none';
+                return;
+            }
+
+            group.style.display = 'block';
             // Sort by value
             options.sort((a, b) => parseFloat(a.value) - parseFloat(b.value));
 
-            if (options.length) {
-                let chips = options.map((p, i) => {
-                    const display = p.label || (parseFloat(p.value) + ' পাউন্ড');
-                    const val = parseFloat(p.value) + ' পাউন্ড';
-                    const isFirst = i === 0;
-                    const priceAttr = (p.price !== undefined && p.price !== null && p.price !== '') ? p.price : 'null';
-                    if (isFirst) {
-                        selectedWeight = val;
-                        currentPoundPrice = (priceAttr !== 'null') ? parseFloat(priceAttr) : null;
+            let chips = options.map((p, i) => {
+                const display = p.label || (parseFloat(p.value) + ' পাউন্ড');
+                const val = parseFloat(p.value) + ' পাউন্ড';
+                const isFirst = i === 0;
+                const priceAttr = (p.price !== undefined && p.price !== null && p.price !== '') ? p.price : 'null';
+
+                if (isFirst) {
+                    selectedWeight = val;
+                    if (priceAttr !== 'null') {
+                        currentPoundPrice = parseFloat(priceAttr);
+                    } else if (currentProduct) {
+                        currentPoundPrice = currentProduct.price * parseFloat(p.value);
                     }
-                    const priceLabel = (priceAttr !== 'null') ? ` · ৳${parseFloat(priceAttr).toLocaleString('en-IN')}` : '';
-                    return `<button class="pd-chip${isFirst ? ' selected' : ''}" data-val="${val}" data-price="${priceAttr}" onclick="selectChip(this,'weight')">${display}${priceLabel}</button>`;
-                }).join('');
-                // Always append Custom at end (no price)
-                chips += `<button class="pd-chip" data-val="Custom" data-price="null" onclick="selectChip(this,'weight')">Custom</button>`;
-                container.innerHTML = chips;
-            } else {
-                // Fallback defaults (no price)
-                const defaults = [
-                    { val: '1 পাউন্ড', label: '1 পাউন্ড' },
-                    { val: '1.5 পাউন্ড', label: '1.5 পাউন্ড' },
-                    { val: '2 পাউন্ড', label: '2 পাউন্ড' },
-                    { val: '3 পাউন্ড', label: '3 পাউন্ড' }
-                ];
-                container.innerHTML = defaults.map((d, i) => {
-                    if (i === 0) { selectedWeight = d.val; currentPoundPrice = null; }
-                    return `<button class="pd-chip${i === 0 ? ' selected' : ''}" data-val="${d.val}" data-price="null" onclick="selectChip(this,'weight')">${d.label}</button>`;
-                }).join('') + `<button class="pd-chip" data-val="Custom" data-price="null" onclick="selectChip(this,'weight')">Custom</button>`;
-            }
+                }
+
+                const priceLabel = (priceAttr !== 'null') ? ` · ৳${parseFloat(priceAttr).toLocaleString('en-IN')}` : '';
+                return `<button class="pd-chip${isFirst ? ' selected' : ''}" data-val="${val}" data-price="${priceAttr}" onclick="selectChip(this,'weight')">${display}${priceLabel}</button>`;
+            }).join('');
+
+            // Always append Custom at end
+            chips += `<button class="pd-chip" data-val="Custom" data-price="null" onclick="selectChip(this,'weight')">Custom</button>`;
+            container.innerHTML = chips;
         }
 
         // ── Init ──
